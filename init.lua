@@ -1,21 +1,67 @@
 local wezterm = require 'wezterm'
 local module = {}
 
--- ==== Cache window size and monitor resolution ====
+-- ==== Cache window size and monitor resolution (Up to 5 monitors) ====
 local cache_file = wezterm.config_dir .. "/.wezterm_size_cache"
 
+-- Function to load cache
 local function load_size_cache()
+  local cache = {}
   local file = io.open(cache_file, "r")
   if file then
-    local content = file:read("*a")
-    file:close()
-    -- Match 4 numbers: cols, rows, screen_width, screen_height
-    local cols, rows, scr_w, scr_h = content:match("(%d+),(%d+),(%d+),(%d+)")
-    if cols and rows and scr_w and scr_h then
-      return tonumber(cols), tonumber(rows), tonumber(scr_w), tonumber(scr_h)
+    for line in file:lines() do
+      -- Match 6 numbers: scr_w, scr_h, cols, rows, px_w, px_h
+      local sw, sh, c, r, pw, ph = line:match("(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)")
+      if sw and sh and c and r and pw and ph then
+        table.insert(cache, {
+          scr_w = tonumber(sw), scr_h = tonumber(sh),
+          cols = tonumber(c), rows = tonumber(r),
+          px_w = tonumber(pw), px_h = tonumber(ph)
+        })
+      else
+        -- Fallback for old cache format (4 numbers)
+        local o_sw, o_sh, o_c, o_r = line:match("(%d+),(%d+),(%d+),(%d+)")
+        if o_sw then
+           table.insert(cache, {
+              scr_w = tonumber(o_sw), scr_h = tonumber(o_sh),
+              cols = tonumber(o_c), rows = tonumber(o_r)
+           })
+        end
+      end
     end
+    file:close()
   end
-  return nil, nil, nil, nil
+  return cache
+end
+
+-- Function to save / update cache
+local function save_size_cache(scr_w, scr_h, cols, rows, px_w, px_h)
+  local cache = load_size_cache()
+  local new_cache = {}
+
+  -- 1. Add new monitor info at the top
+  table.insert(new_cache, {
+    scr_w = scr_w, scr_h = scr_h, cols = cols, rows = rows, px_w = px_w, px_h = px_h
+  })
+
+  -- 2. Copy existing cache except for the new cache
+  for _, entry in ipairs(cache) do
+    if not (entry.scr_w == scr_w and entry.scr_h == scr_h) then
+      table.insert(new_cache, entry)
+    end
+    -- Max five monitors
+    if #new_cache >= 5 then break end
+  end
+
+  -- 3. Write
+  local file = io.open(cache_file, "w")
+  if file then
+    for _, entry in ipairs(new_cache) do
+      file:write(string.format("%d,%d,%d,%d,%d,%d\n",
+        entry.scr_w, entry.scr_h, entry.cols, entry.rows, entry.px_w or 0, entry.px_h or 0))
+    end
+    file:close()
+  end
 end
 
 -- ==== Apply configurations and keybindings ====
@@ -25,11 +71,13 @@ function module.apply_to_config(config, opts)
   local shortcut_key = opts.key or 'S'
   local shortcut_mods = opts.mods or 'CMD|SHIFT'
 
-  local cached_cols, cached_rows, _, _ = load_size_cache()
+  local size_cache = load_size_cache()
+  -- Get the top value as a default (most recently used monitor)
+  local primary_cache = size_cache[1] or {}
 
   -- Use cached size if available, otherwise fallback to reasonable default
-  config.initial_cols = cached_cols or 150
-  config.initial_rows = cached_rows or 55
+  config.initial_cols = primary_cache.cols or 150
+  config.initial_rows = primary_cache.rows or 55
 
   -- Initialize keys table if it doesn't exist
   if not config.keys then
@@ -45,12 +93,12 @@ function module.apply_to_config(config, opts)
       local screen = wezterm.gui.screens().active
       if not screen then return end
 
-      local file = io.open(cache_file, "w")
-      if file then
-        file:write(dims.cols .. "," .. dims.viewport_rows .. "," .. math.floor(screen.width) .. "," .. math.floor(screen.height))
-        file:close()
-        window:toast_notification("WezTerm", "Saved current window size as default!", nil, 4000)
-      end
+      save_size_cache(
+        math.floor(screen.width), math.floor(screen.height),
+        dims.cols, dims.viewport_rows,
+        dims.pixel_width, dims.pixel_height
+      )
+      window:toast_notification("WezTerm", "Saved current window size for this monitor!", nil, 4000)
     end),
   })
 end
@@ -63,10 +111,40 @@ wezterm.on('gui-startup', function(cmd)
   local screen = wezterm.gui.screens().active
   if not screen then return end
 
-  local _, _, cached_scr_w, cached_scr_h = load_size_cache()
+  local cur_w = math.floor(screen.width)
+  local cur_h = math.floor(screen.height)
 
-  -- If the current monitor matches the cached monitor, skip resizing to prevent flicker
-  if cached_scr_w == math.floor(screen.width) and cached_scr_h == math.floor(screen.height) then
+  local size_cache = load_size_cache()
+  local primary_cache = size_cache[1] or {}
+
+  -- Check if the current monitor exists in the cache
+  local matched_cache = nil
+  for _, entry in ipairs(size_cache) do
+    if entry.scr_w == cur_w and entry.scr_h == cur_h then
+      matched_cache = entry
+      break
+    end
+  end
+
+  if matched_cache then
+    if primary_cache.scr_w == cur_w and primary_cache.scr_h == cur_h then
+      -- If using the most recent monitor, skip resizing to prevent flicker
+      return
+    else
+      -- If using a different monitor used before, restore the pixel size for the display
+      if matched_cache.px_w and matched_cache.px_w > 0 then
+         gui_window:set_inner_size(matched_cache.px_w, matched_cache.px_h)
+         local center_x = math.floor(screen.x + (screen.width - matched_cache.px_w) / 2)
+         local center_y = math.floor(screen.y + (screen.height - matched_cache.px_h) / 2)
+         gui_window:set_position(center_x, center_y)
+      end
+
+      -- Make this monitor the most recent one
+      wezterm.time.call_after(0.5, function()
+        local dims = pane:get_dimensions()
+        save_size_cache(cur_w, cur_h, dims.cols, dims.viewport_rows, dims.pixel_width, dims.pixel_height)
+      end)
+    end
     return
   end
 
@@ -84,11 +162,7 @@ wezterm.on('gui-startup', function(cmd)
   -- Save window size after 0.5 s and make it a default
   wezterm.time.call_after(0.5, function()
     local dims = pane:get_dimensions()
-    local file = io.open(cache_file, "w")
-    if file then
-      file:write(dims.cols .. "," .. dims.viewport_rows .. "," .. math.floor(screen.width) .. "," .. math.floor(screen.height))
-      file:close()
-    end
+    save_size_cache(cur_w, cur_h, dims.cols, dims.viewport_rows, dims.pixel_width, dims.pixel_height)
   end)
 end)
 
