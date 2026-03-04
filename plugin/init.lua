@@ -20,6 +20,9 @@ local is_mac = os_type == "mac"
 local path_sep = is_windows and "\\" or "/"
 local cache_file = wezterm.config_dir .. path_sep .. ".wezterm_size_cache"
 
+-- Cache for last seen monitor resolution/position to avoid redundant resizing
+local last_screen_info = {}
+
 -- Function to load window size cache
 local function load_size_cache()
   local cache = {}
@@ -78,6 +81,12 @@ local function resize_window_for_monitor(window, pane)
 
   local cur_w = math.floor(screen.width)
   local cur_h = math.floor(screen.height)
+
+  -- Update last known screen info to prevent redundant resizing
+  local window_id = tostring(window:window_id())
+  last_screen_info[window_id] = string.format("%d%d%d%d", 
+    math.floor(screen.x), math.floor(screen.y), cur_w, cur_h)
+
   local size_cache = load_size_cache()
   
   -- Check if this monitor is in cache
@@ -138,8 +147,16 @@ function module.apply_to_config(config, opts)
       local dims = pane:get_dimensions()
       local screen = wezterm.gui.screens().active
       if not screen then return end
+      
+      -- Update last_screen_info when manually saving to avoid immediate snapback
+      local cur_w = math.floor(screen.width)
+      local cur_h = math.floor(screen.height)
+      local window_id = tostring(window:window_id())
+      last_screen_info[window_id] = string.format("%d%d%d%d", 
+        math.floor(screen.x), math.floor(screen.y), cur_w, cur_h)
+
       save_size_cache(
-        math.floor(screen.width), math.floor(screen.height),
+        cur_w, cur_h,
         dims.cols, dims.viewport_rows,
         dims.pixel_width, dims.pixel_height
       )
@@ -164,7 +181,18 @@ function module.setup_startup_hook()
   wezterm.on('window-config-reloaded', function(window, pane)
     -- Slight delay to let the OS finalize the display change
     wezterm.time.call_after(0.1, function()
-      resize_window_for_monitor(window, pane)
+      local screen = wezterm.gui.screens().active
+      if not screen then return end
+
+      local window_id = tostring(window:window_id())
+      local screen_id = string.format("%d%d%d%d", 
+        math.floor(screen.x), math.floor(screen.y), 
+        math.floor(screen.width), math.floor(screen.height))
+
+      -- Only resize if the monitor or resolution has actually changed
+      if last_screen_info[window_id] ~= screen_id then
+        resize_window_for_monitor(window, pane)
+      end
     end)
   end)
 end
