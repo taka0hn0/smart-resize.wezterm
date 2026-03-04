@@ -43,9 +43,9 @@ This plugin is designed to work across all major operating systems:
 
 | OS | Default Shortcut | Cache Location |
 | :--- | :--- | :--- |
-| **macOS** | `CMD|SHIFT + S` | `~/.config/wezterm/.wezterm_size_cache` |
-| **Linux** | `CTRL|SHIFT + S` | `~/.config/wezterm/.wezterm_size_cache` |
-| **Windows** | `CTRL|SHIFT + S` | `%APPDATA%\wezterm\.wezterm_size_cache` |
+| **macOS** | `Cmd + Shift + S` | `~/.config/wezterm/.wezterm_size_cache` |
+| **Linux** | `Ctrl + Shift + S` | `~/.config/wezterm/.wezterm_size_cache` |
+| **Windows** | `Ctrl + Shift + S` | `%APPDATA%\wezterm\.wezterm_size_cache` |
 
 > [!NOTE]
 > **Linux Users:** If you are using a **Tiling Window Manager** (like i3, Sway, or Hyprland), your window manager may override the plugin's attempts to resize or center the window.
@@ -53,8 +53,9 @@ This plugin is designed to work across all major operating systems:
 ## ⌨️ Usage & Configuration
 
 By default, the plugin registers a shortcut to save your current window size:
-- **macOS**: `CMD|SHIFT + S`
-- **Windows/Linux**: `CTRL|SHIFT + S`
+- **macOS**: `Cmd + Shift + S`
+- **Windows/Linux**: `Ctrl + Shift + S`
+
 
 A toast notification will appear confirming the new default.
 
