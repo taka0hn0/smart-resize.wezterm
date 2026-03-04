@@ -20,7 +20,7 @@ local is_mac = os_type == "mac"
 local path_sep = is_windows and "\\" or "/"
 local cache_file = wezterm.config_dir .. path_sep .. ".wezterm_size_cache"
 
--- Function to load cache
+-- Function to load window size cache
 local function load_size_cache()
   local cache = {}
   local file = io.open(cache_file, "r")
@@ -50,7 +50,7 @@ local function load_size_cache()
   return cache
 end
 
--- Function to save / update cache
+-- Function to save / update window size cache
 local function save_size_cache(scr_w, scr_h, cols, rows, px_w, px_h)
   local cache = load_size_cache()
   local new_cache = {}
@@ -60,16 +60,16 @@ local function save_size_cache(scr_w, scr_h, cols, rows, px_w, px_h)
     scr_w = scr_w, scr_h = scr_h, cols = cols, rows = rows, px_w = px_w, px_h = px_h
   })
 
-  -- 2. Copy existing cache except for the new cache
+  -- 2. Copy existing cache except for the newly added monitor
   for _, entry in ipairs(cache) do
     if not (entry.scr_w == scr_w and entry.scr_h == scr_h) then
       table.insert(new_cache, entry)
     end
-    -- Max five monitors
+    -- Keep maximum of five monitors in cache
     if #new_cache >= 5 then break end
   end
 
-  -- 3. Write
+  -- 3. Write back to file
   local file = io.open(cache_file, "w")
   if file then
     for _, entry in ipairs(new_cache) do
@@ -120,67 +120,77 @@ function module.apply_to_config(config, opts)
   })
 end
 
--- ==== Calculate window size on startup ====
-wezterm.on('gui-startup', function(cmd)
-  local mux = wezterm.mux
-  local tab, pane, window = mux.spawn_window(cmd or {})
-  local gui_window = window:gui_window()
-  local screen = wezterm.gui.screens().active
-  if not screen then return end
+-- ==== Setup window size calculation on startup ====
+-- Expose this as a function so users can call it safely from their wezterm.lua
+function module.setup_startup_hook()
+  wezterm.on('gui-startup', function(cmd)
+    -- Add a slight delay to ensure GUI components are fully loaded
+    wezterm.time.call_after(0.1, function()
+      local mux = wezterm.mux
+      
+      -- Prevent multiple windows from spawning if already active
+      if #mux.all_windows() > 0 then return end
+      
+      local tab, pane, window = mux.spawn_window(cmd or {})
+      local gui_window = window:gui_window()
+      local screen = wezterm.gui.screens().active
+      if not screen then return end
 
-  local cur_w = math.floor(screen.width)
-  local cur_h = math.floor(screen.height)
+      local cur_w = math.floor(screen.width)
+      local cur_h = math.floor(screen.height)
 
-  local size_cache = load_size_cache()
-  local primary_cache = size_cache[1] or {}
+      local size_cache = load_size_cache()
+      local primary_cache = size_cache[1] or {}
 
-  -- Check if the current monitor exists in the cache
-  local matched_cache = nil
-  for _, entry in ipairs(size_cache) do
-    if entry.scr_w == cur_w and entry.scr_h == cur_h then
-      matched_cache = entry
-      break
-    end
-  end
-
-  if matched_cache then
-    if primary_cache.scr_w == cur_w and primary_cache.scr_h == cur_h then
-      -- If using the most recent monitor, skip resizing to prevent flicker
-      return
-    else
-      -- If using a different monitor used before, restore the pixel size for the display
-      if matched_cache.px_w and matched_cache.px_w > 0 then
-         gui_window:set_inner_size(matched_cache.px_w, matched_cache.px_h)
-         local center_x = math.floor(screen.x + (screen.width - matched_cache.px_w) / 2)
-         local center_y = math.floor(screen.y + (screen.height - matched_cache.px_h) / 2)
-         gui_window:set_position(center_x, center_y)
+      -- Check if the current monitor exists in the cache
+      local matched_cache = nil
+      for _, entry in ipairs(size_cache) do
+        if entry.scr_w == cur_w and entry.scr_h == cur_h then
+          matched_cache = entry
+          break
+        end
       end
 
-      -- Make this monitor the most recent one
+      if matched_cache then
+        if primary_cache.scr_w == cur_w and primary_cache.scr_h == cur_h then
+          -- If using the most recent monitor, skip resizing to prevent flicker
+          return
+        else
+          -- If using a different monitor used before, restore the pixel size for the display
+          if matched_cache.px_w and matched_cache.px_w > 0 then
+             gui_window:set_inner_size(matched_cache.px_w, matched_cache.px_h)
+             local center_x = math.floor(screen.x + (screen.width - matched_cache.px_w) / 2)
+             local center_y = math.floor(screen.y + (screen.height - matched_cache.px_h) / 2)
+             gui_window:set_position(center_x, center_y)
+          end
+
+          -- Make this monitor the most recent one
+          wezterm.time.call_after(0.5, function()
+            local dims = pane:get_dimensions()
+            save_size_cache(cur_w, cur_h, dims.cols, dims.viewport_rows, dims.pixel_width, dims.pixel_height)
+          end)
+        end
+        return
+      end
+
+      -- If monitor changed or no cache exists, calculate 80% of the new screen size
+      local target_width = math.floor(screen.width * 0.8)
+      local target_height = math.floor(screen.height * 0.85)
+
+      gui_window:set_inner_size(target_width, target_height)
+
+      local center_x = math.floor(screen.x + (screen.width - target_width) / 2)
+      local center_y = math.floor(screen.y + (screen.height - target_height) / 2)
+      
+      gui_window:set_position(center_x, center_y)
+
+      -- Save window size after 0.5 seconds and make it the default
       wezterm.time.call_after(0.5, function()
         local dims = pane:get_dimensions()
         save_size_cache(cur_w, cur_h, dims.cols, dims.viewport_rows, dims.pixel_width, dims.pixel_height)
       end)
-    end
-    return
-  end
-
-  -- If monitor changed or no cache exists, calculate 80% of the new screen
-  local target_width = math.floor(screen.width * 0.8)
-  local target_height = math.floor(screen.height * 0.85)
-
-  gui_window:set_inner_size(target_width, target_height)
-
-  local center_x = math.floor(screen.x + (screen.width - target_width) / 2)
-  local center_y = math.floor(screen.y + (screen.height - target_height) / 2)
-  
-  gui_window:set_position(center_x, center_y)
-
-  -- Save window size after 0.5 s and make it a default
-  wezterm.time.call_after(0.5, function()
-    local dims = pane:get_dimensions()
-    save_size_cache(cur_w, cur_h, dims.cols, dims.viewport_rows, dims.pixel_width, dims.pixel_height)
+    end)
   end)
-end)
+end
 
 return module
