@@ -1,8 +1,24 @@
 local wezterm = require 'wezterm'
 local module = {}
 
--- ==== Cache window size and monitor resolution (Up to 5 monitors) ====
-local cache_file = wezterm.config_dir .. "/.wezterm_size_cache"
+-- Helper to detect OS
+local function get_os()
+  if wezterm.target_triple:find("apple") then
+    return "mac"
+  elseif wezterm.target_triple:find("windows") then
+    return "windows"
+  else
+    return "linux"
+  end
+end
+
+local os_type = get_os()
+local is_windows = os_type == "windows"
+local is_mac = os_type == "mac"
+
+-- Set path separator and cache file path
+local path_sep = is_windows and "\\" or "/"
+local cache_file = wezterm.config_dir .. path_sep .. ".wezterm_size_cache"
 
 -- Function to load cache
 local function load_size_cache()
@@ -69,7 +85,8 @@ function module.apply_to_config(config, opts)
   -- Allow users to override the default shortcut key
   opts = opts or {}
   local shortcut_key = opts.key or 'S'
-  local shortcut_mods = opts.mods or 'CMD|SHIFT'
+  local default_mods = is_mac and 'CMD|SHIFT' or 'CTRL|SHIFT'
+  local shortcut_mods = opts.mods or default_mods
 
   local size_cache = load_size_cache()
   -- Get the top value as a default (most recently used monitor)

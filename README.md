@@ -22,16 +22,14 @@ A lightweight WezTerm plugin that intelligently manages your terminal window siz
 
 ## 🚀 Installation
 
-You can load this plugin directly from your `wezterm.lua` configuration file using WezTerm's built-in plugin manager. 
-
-Add the following to your configuration:
+Add the following to your `wezterm.lua`:
 
 ```lua
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder()
 
 -- 1. Import the plugin
-local smart_resize = wezterm.plugin.require("[https://github.com/taka0hn0/wez-smart-resize](https://github.com/taka0hn0/wez-smart-resize)")
+local smart_resize = wezterm.plugin.require("https://github.com/taka0hn0/wez-smart-resize")
 
 -- 2. Apply it to your config
 smart_resize.apply_to_config(config)
@@ -39,30 +37,53 @@ smart_resize.apply_to_config(config)
 return config
 ```
 
+## 💻 OS Compatibility
+
+This plugin is designed to work across all major operating systems:
+
+| OS | Default Shortcut | Cache Location |
+| :--- | :--- | :--- |
+| **macOS** | `CMD|SHIFT + S` | `~/.config/wezterm/.wezterm_size_cache` |
+| **Linux** | `CTRL|SHIFT + S` | `~/.config/wezterm/.wezterm_size_cache` |
+| **Windows** | `CTRL|SHIFT + S` | `%APPDATA%\wezterm\.wezterm_size_cache` |
+
+> [!NOTE]
+> **Linux Users:** If you are using a **Tiling Window Manager** (like i3, Sway, or Hyprland), your window manager may override the plugin's attempts to resize or center the window.
 
 ## ⌨️ Usage & Configuration
 
-By default, the plugin registers the `CMD|SHIFT + S` shortcut to save your current window size. A toast notification will appear in the top right corner confirming the new default.
+By default, the plugin registers a shortcut to save your current window size:
+- **macOS**: `CMD|SHIFT + S`
+- **Windows/Linux**: `CTRL|SHIFT + S`
+
+A toast notification will appear confirming the new default.
 
 ### Customizing the Shortcut
 
-If you prefer a different keybinding (which is especially useful if you are syncing your dotfiles across macOS and Linux environments), you can pass an options table when applying the configuration:
+If you prefer a different keybinding, you can pass an options table:
 
 ```lua
 smart_resize.apply_to_config(config, {
   key = 'S',
-  mods = 'CTRL|SHIFT'
+  mods = 'ALT|SHIFT'
 })
 ```
 
 ## 🧹 Resetting the Cache
 
-If you want to reset your saved window size and return to the default auto-calculated dimensions, you simply need to delete the hidden cache file (`~/.config/wezterm/.wezterm_size_cache`).
+If you want to reset your saved window size and return to the default auto-calculated dimensions, you simply need to delete the hidden cache file `.wezterm_size_cache` located in your WezTerm configuration directory:
 
-It is highly recommended to add the following alias to your shell configuration (e.g., `.zshrc`):
+- **macOS/Linux**: `~/.config/wezterm/.wezterm_size_cache`
+- **Windows**: `%APPDATA%\wezterm\.wezterm_size_cache` (or wherever your `wezterm.lua` is located)
 
+It is highly recommended to add an alias to your shell configuration:
+
+**macOS/Linux (`.zshrc` or `.bashrc`):**
 ```bash
 alias wez-reset="rm -f ~/.config/wezterm/.wezterm_size_cache && echo 'WezTerm size cache removed!'"
 ```
 
-Run `wez-reset` in your terminal to instantly clear the cached dimensions.
+**Windows (PowerShell):**
+```powershell
+function wez-reset { Remove-Item "$env:APPDATA\wezterm\.wezterm_size_cache"; Write-Host "WezTerm size cache removed!" }
+```
