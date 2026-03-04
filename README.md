@@ -1,4 +1,3 @@
-
 <div align="center">
   <h1>🧠</h1>
   <h1>smart-resize.wezterm</h1>
@@ -15,12 +14,20 @@
 
 A lightweight WezTerm plugin that intelligently manages your terminal window size across different monitors. It automatically calculates the optimal dimensions based on your current screen resolution and remembers your preferred size for each display, completely eliminating jarring startup flickering.
 
+## 🧐 Why this plugin?
+
+By default, WezTerm calculates window size based on `initial_cols` and `initial_rows`. <br><br>However, with this approach, if you connect to a different monitor or change the display resolution settings, the window’s screen occupancy will no longer remain consistent, and you will need to reconfigure it.
+<br><br>**Smart-resize.wezterm** solves this by:
+1. **Predicting** the correct dimensions before the window is fully rendered.
+2. **Restoring** the exact pixel size cached from your previous session.
+3. **Adapting** instantly when you plug in or unplug external monitors.
+
 ## ✨ Features
 
-- **Smart Auto-Scaling**: Automatically calculates an optimal window size (80% width, 85% height) and centers it on your screen upon initial launch or when connecting to a new monitor.
+- **Smart Auto-Scaling**: Automatically calculates an optimal window size (80% width, 85% height) and centers it on your screen upon initial launch.
 - **Multi-Monitor Awareness**: Detects monitor changes or resolution adjustments in real-time and automatically restores the saved dimensions for that specific display.
-- **Flicker-Free Startup**: By caching your exact column and row counts, WezTerm opens instantly at the correct size, bypassing the usual "small-to-large" window animation.
-- **Zero-Config Persistence**: Once you manually resize a window and save it, the plugin handles everything. It even auto-caches its initial calculations so you don't have to.
+- **Flicker-Free Startup**: By caching your exact pixel dimensions, WezTerm opens instantly at the correct size.
+- **Manual Resize Protection**: If you manually resize the window, the plugin respects your choice and disables auto-resizing until you restart WezTerm or change monitors.
 
 ## 🚀 Installation
 
@@ -30,7 +37,7 @@ Add the following to your `wezterm.lua`:
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder()
 
--- 1. Import the plugin (Note: .git#main is recommended for stable auto-clone)
+-- 1. Import the plugin (Note: .git#main ensures you get the latest stable version)
 local smart_resize = wezterm.plugin.require("[https://github.com/taka0hn0/smart-resize.wezterm.git#main](https://github.com/taka0hn0/smart-resize.wezterm.git#main)")
 
 -- 2. Apply it to your config
@@ -44,8 +51,6 @@ return config
 ```
 
 ## 💻 OS Compatibility
-
-This plugin is designed to work across all major operating systems:
 
 | OS | Default Shortcut | Cache Location |
 | --- | --- | --- |
@@ -70,48 +75,56 @@ This plugin is designed to work across all major operating systems:
 
 ### Customizing the Shortcut
 
-You can override the default keybinding in the `apply_to_config` options:
-
 ```lua
 smart_resize.apply_to_config(config, {
   key = 'S',
-  mods = 'ALT|SHIFT' -- Change your mods here
+  mods = 'ALT|SHIFT'
 })
 ```
 
-### Real-time Monitor Detection
+### Manual Override Mode
 
-The plugin automatically hooks into `window-config-reloaded`. When you plug in an external monitor or change your resolution, the plugin will:
+The plugin is "smart" enough to respect your manual adjustments. If you drag the window edges to resize it manually, the plugin will **disable auto-resizing** for that specific window until:
 
-1. Identify the new screen resolution.
-2. Search the cache for a matching size.
-3. Automatically resize and center the window if a record is found.
+* You restart WezTerm.
+* You move the window to a different monitor or change resolution.
 
 ## 🧹 Resetting the Cache
 
-To reset your saved window sizes, delete the hidden cache file in your configuration directory:
+To reset your saved window sizes and return to the default auto-calculated dimensions, delete the hidden cache file.
 
-* **macOS/Linux**: `rm ~/.config/wezterm/.wezterm_size_cache`
-* **Windows (PowerShell)**: `Remove-Item "$env:APPDATA\wezterm\.wezterm_size_cache"`
+**Recommended Alias:**
+Add this to your shell configuration (`.zshrc`, `.bashrc`, etc.):
 
-For convenience, it is highly recommended to add the following alias to your shell configuration (`.zshrc`, `.bashrc`, or `fish` config):
-
-**macOS / Linux:**
+**🍎macOS / 🐧Linux**
 ```bash
-# Add this to your ~/.zshrc or ~/.bashrc
 alias wez-reset="rm -f ~/.config/wezterm/.wezterm_size_cache && echo 'Deleted WezTerm window size cache!'"
-Windows (PowerShell Profile):
 ```
-**Windows (PowerShell)**
+
+**🪟Windows (PowerShell Profile)**
 ```powershell
 function wez-reset { 
     Remove-Item "$env:APPDATA\wezterm\.wezterm_size_cache" -ErrorAction SilentlyContinue
     Write-Host "Deleted WezTerm window size cache!" -ForegroundColor Green 
 }
 ```
-After adding this, you can simply type 
+
+After setting this up, you can just type
 ```bash
 wez-reset
 ```
-in your terminal to clear all saved monitor dimensions.
+to clear the cache.
+
+## 🛠️ Troubleshooting
+
+### Plugin not updating?
+
+WezTerm caches plugins for performance. To force an update to the latest version, clear the plugin download folder:
+
+* **macOS**: `rm -rf "$HOME/Library/Application Support/wezterm/plugins/"*`
+* **Linux**: `rm -rf "$HOME/.local/share/wezterm/plugins/"*`
+
+## 📄 License
+
+This project is licensed under the MIT License.
 
